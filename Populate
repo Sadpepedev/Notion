@@ -1,0 +1,334 @@
+“””
+Notion Database Auto-Population Script
+This script syncs data from your internal database to a Notion table
+“””
+
+import requests
+import json
+from datetime import datetime
+from typing import Dict, List, Optional
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+
+load_dotenv()
+
+class NotionDatabaseSync:
+def **init**(self, notion_token: str, database_id: str):
+“””
+Initialize the Notion sync client
+
+```
+    Args:
+        notion_token: Your Notion Integration Token
+        database_id: The ID of your Notion database
+    """
+    self.notion_token = notion_token
+    self.database_id = database_id
+    self.headers = {
+        "Authorization": f"Bearer {notion_token}",
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28"
+    }
+    self.base_url = "https://api.notion.com/v1"
+
+def create_page(self, data: Dict) -> Dict:
+    """
+    Create a new page (row) in the Notion database
+    
+    Args:
+        data: Dictionary containing the row data
+    
+    Returns:
+        Response from Notion API
+    """
+    url = f"{self.base_url}/pages"
+    
+    # Format the properties according to Notion's schema
+    properties = {
+        "Name": {
+            "title": [
+                {
+                    "text": {
+                        "content": data.get("name", "")
+                    }
+                }
+            ]
+        },
+        "UID": {
+            "rich_text": [
+                {
+                    "text": {
+                        "content": data.get("uid", "")
+                    }
+                }
+            ]
+        },
+        "Status": {
+            "select": {
+                "name": data.get("status", "Not started")
+            }
+        },
+        "Reviewer Name": {
+            "rich_text": [
+                {
+                    "text": {
+                        "content": data.get("reviewer_name", "")
+                    }
+                }
+            ]
+        },
+        "Review Date": {
+            "date": {
+                "start": data.get("review_date", "")  # ISO 8601 format
+            } if data.get("review_date") else None
+        },
+        "Next Follow Up": {
+            "date": {
+                "start": data.get("next_follow_up", "")  # ISO 8601 format
+            } if data.get("next_follow_up") else None
+        },
+        "Date Added": {
+            "date": {
+                "start": data.get("date_added", datetime.now().isoformat())
+            }
+        },
+        "Platform": {
+            "select": {
+                "name": data.get("platform", "")
+            }
+        },
+        "Socials": {
+            "rich_text": [
+                {
+                    "text": {
+                        "content": data.get("socials", "")
+                    }
+                }
+            ]
+        }
+    }
+    
+    # Remove None values to avoid API errors
+    properties = {k: v for k, v in properties.items() if v is not None}
+    
+    payload = {
+        "parent": {"database_id": self.database_id},
+        "properties": properties
+    }
+    
+    response = requests.post(url, headers=self.headers, json=payload)
+    
+    if response.status_code != 200:
+        print(f"Error creating page: {response.status_code}")
+        print(response.json())
+        
+    return response.json()
+
+def check_if_exists(self, uid: str) -> Optional[str]:
+    """
+    Check if a record with given UID already exists
+    
+    Args:
+        uid: The UID to check
+    
+    Returns:
+        Page ID if exists, None otherwise
+    """
+    url = f"{self.base_url}/databases/{self.database_id}/query"
+    
+    filter_data = {
+        "filter": {
+            "property": "UID",
+            "rich_text": {
+                "equals": uid
+            }
+        }
+    }
+    
+    response = requests.post(url, headers=self.headers, json=filter_data)
+    
+    if response.status_code == 200:
+        results = response.json().get("results", [])
+        if results:
+            return results[0]["id"]
+    
+    return None
+
+def update_page(self, page_id: str, data: Dict) -> Dict:
+    """
+    Update an existing page in Notion
+    
+    Args:
+        page_id: The ID of the page to update
+        data: Dictionary containing the updated data
+    
+    Returns:
+        Response from Notion API
+    """
+    url = f"{self.base_url}/pages/{page_id}"
+    
+    # Similar property formatting as create_page
+    properties = {
+        "Status": {
+            "select": {
+                "name": data.get("status", "Not started")
+            }
+        },
+        "Platform": {
+            "select": {
+                "name": data.get("platform", "")
+            }
+        },
+        "Socials": {
+            "rich_text": [
+                {
+                    "text": {
+                        "content": data.get("socials", "")
+                    }
+                }
+            ]
+        }
+    }
+    
+    payload = {"properties": properties}
+    
+    response = requests.patch(url, headers=self.headers, json=payload)
+    
+    return response.json()
+
+def sync_from_database(self, records: List[Dict]):
+    """
+    Sync multiple records from your internal database to Notion
+    
+    Args:
+        records: List of dictionaries containing record data
+    """
+    created_count = 0
+    updated_count = 0
+    error_count = 0
+    
+    for record in records:
+        try:
+            uid = record.get("uid")
+            
+            if not uid:
+                print(f"Skipping record without UID: {record}")
+                error_count += 1
+                continue
+            
+            # Check if record exists
+            existing_page_id = self.check_if_exists(uid)
+            
+            if existing_page_id:
+                # Update existing record
+                print(f"Updating existing record: {uid}")
+                self.update_page(existing_page_id, record)
+                updated_count += 1
+            else:
+                # Create new record
+                print(f"Creating new record: {uid}")
+                self.create_page(record)
+                created_count += 1
+                
+        except Exception as e:
+            print(f"Error processing record {record.get('uid', 'unknown')}: {str(e)}")
+            error_count += 1
+    
+    print(f"\nSync Summary:")
+    print(f"Created: {created_count}")
+    print(f"Updated: {updated_count}")
+    print(f"Errors: {error_count}")
+```
+
+def fetch_from_internal_database():
+“””
+Fetch records from your internal database
+Replace this with your actual database connection and query
+“””
+# Example implementation - replace with your actual database logic
+
+```
+# Example using SQLite
+# import sqlite3
+# conn = sqlite3.connect('your_database.db')
+# cursor = conn.cursor()
+# cursor.execute("SELECT * FROM fud_outreach_tracker")
+# rows = cursor.fetchall()
+
+# Example using PostgreSQL
+# import psycopg2
+# conn = psycopg2.connect(
+#     host="your_host",
+#     database="your_database",
+#     user="your_user",
+#     password="your_password"
+# )
+# cursor = conn.cursor()
+# cursor.execute("SELECT * FROM fud_outreach_tracker")
+# rows = cursor.fetchall()
+
+# Example data structure that matches your table
+sample_data = [
+    {
+        "uid": "FUD-202511102043",
+        "name": "FUD-202511102043",
+        "status": "Not started",
+        "reviewer_name": "",
+        "review_date": "2025-11-10",
+        "next_follow_up": None,
+        "date_added": "2025-11-10",
+        "platform": "TrustPilot",
+        "socials": "Twitter/X"
+    },
+    {
+        "uid": "FUD-202511102047",
+        "name": "FUD-202511102047",
+        "status": "Not started",
+        "reviewer_name": "",
+        "review_date": "2025-11-03",
+        "next_follow_up": None,
+        "date_added": "2025-11-03",
+        "platform": "Socials FUD",
+        "socials": "Twitter/X"
+    }
+]
+
+return sample_data
+```
+
+def main():
+“””
+Main function to run the sync process
+“””
+# Get credentials from environment variables
+NOTION_TOKEN = os.getenv(“NOTION_TOKEN”)
+DATABASE_ID = os.getenv(“NOTION_DATABASE_ID”)
+
+```
+if not NOTION_TOKEN or not DATABASE_ID:
+    print("Please set NOTION_TOKEN and NOTION_DATABASE_ID environment variables")
+    print("\nTo get these values:")
+    print("1. NOTION_TOKEN: Create an integration at https://www.notion.so/my-integrations")
+    print("2. DATABASE_ID: Copy from your Notion database URL")
+    print("   Example: https://www.notion.so/myworkspace/[DATABASE_ID]?v=...")
+    return
+
+# Initialize the sync client
+sync_client = NotionDatabaseSync(NOTION_TOKEN, DATABASE_ID)
+
+# Fetch data from your internal database
+print("Fetching data from internal database...")
+records = fetch_from_internal_database()
+print(f"Found {len(records)} records to sync")
+
+# Sync to Notion
+print("\nSyncing to Notion...")
+sync_client.sync_from_database(records)
+
+print("\nSync complete!")
+```
+
+if **name** == “**main**”:
+main()
